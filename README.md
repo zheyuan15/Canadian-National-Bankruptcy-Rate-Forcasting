@@ -1,1 +1,1 @@
-# Canadian-National-Bankruptcy-Rate-Forcasting
+# Canadian-National-Bankruptcy-Rate-Forecasting
