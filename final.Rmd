@@ -1,0 +1,269 @@
+---
+title: "final"
+author: "Zhe Yuan"
+date: "12/9/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+library(stats)
+library(stringr)
+library(lmtest)
+library(tseries)
+library(forecast)
+library(vars)
+```
+
+## total data and training data
+
+```{r}
+train_data <- read.csv("/Users/jijiyuan/Desktop/604timeseries/finalproject/train.csv")
+#1987-2014 total
+test_data <- read.csv("/Users/jijiyuan/Desktop/604timeseries/finalproject/test.csv")
+#2015-2017 total
+
+train <- train_data[1:324,]  # here use 1987-2013
+test <- train_data[325:336,]  # here use 2014
+```
+
+```{r}
+bank_train <- ts(data = train$Bankruptcy_Rate, start = c(1987,1), frequency = 12)
+bank_test <- ts(data = test$Bankruptcy_Rate, start = c(2014,1), frequency =12)
+
+employ_train <- ts(data = train$Unemployment_Rate, start = c(1987,1), frequency = 12)
+employ_test <- ts(data = test$Unemployment_Rate, start = c(2014,1), frequency =12)
+
+population_train <- ts(data = train$Population, start = c(1987,1), frequency = 12)
+population_test <- ts(data = test$Population, start = c(2014,1), frequency =12)
+
+house_train <- ts(data = train$House_Price_Index, start = c(1987,1), frequency = 12)
+house_test <- ts(data = test$House_Price_Index, start = c(2014,1), frequency =12)
+```
+
+
+## plot 
+
+```{r}
+par(mfrow=c(2,2))
+plot(bank_train, main = "Bankruptcy Rate 1987-2013", ylab = "Bankruptcy Rate", xlab = "Month", xlim=c(1987, 2015), xaxt = "n", lwd = 1)
+
+plot(employ_train, main = "Unemployment Rate 1987-2013", ylab = "Unemployment Rate", xlab = "Month", xlim=c(1987, 2015), xaxt = "n", lwd = 1)
+
+plot(population_train/10000000, main = "Population 1987-2013", ylab = "Population", xlab = "Month", xlim=c(1987, 2015), xaxt = "n", lwd = 1)
+
+plot(house_train, main = "House Price Index 1987-2013", ylab = "House Price Index", xlab = "Month", xlim=c(1987, 2015), xaxt = "n", lwd = 1)
+
+```
+
+## Uni
+
+## SARIMA
+
+```{r}
+par(mfrow = c(1,2))
+plot(bank_train, main = "Monthly BankruptcyRate 1987-2013", ylab = "Bankruptcy_Rate", xlab = "Month")
+Acf(bank_train, lag.max = 48, main = "ACF plot")
+```
+
+```{r}
+# Transformation
+bc_lambda <- BoxCox.lambda(bank_train) #0.2205705
+bc_lambda
+#bank_train_t <- BoxCox(bank_train, lambda = bc_lambda)
+```
+
+## manual SARIMA
+```{r}
+sarima_man <- Arima(bank_train, order = c(4,1,3), seasonal = list(order = c(1, 1, 1), period=12)) 
+summary(sarima_man)
+
+sarima_man_forecast <- predict(sarima_man, n.ahead = 12)
+sarima_man_rmse <- sqrt(mean((sarima_man_forecast$pred - bank_test)^2))
+sarima_man_rmse
+```
+
+
+## Multi
+
+##SARIMAX
+
+```{r}
+t <- seq(1987, 2014, length=325)[1:324]
+cor_data <- data.frame(t, bank_train, employ_train, population_train, house_train)
+cor(cor_data)
+```
+
+## 1. SARIMAX -- bank VS population
+```{r}
+sarimax_model_population <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = population_train), method = "CSS")
+summary(sarimax_model_population)
+
+sarimax_population_forecast <- predict(sarimax_model_population, n.ahead = 12, newxreg = data.frame(X1 = population_test))
+sarimax_population_rmse <- sqrt(mean((sarimax_population_forecast$pred - bank_test)^2))
+sarimax_population_rmse
+```
+
+
+## 2. SARIMAX -- bank VS house
+```{r}
+sarimax_model_house <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = house_train), method = "CSS")
+summary(sarimax_model_house)
+
+sarimax_house_forecast <- predict(sarimax_model_house, n.ahead = 12, newxreg = data.frame(X1 = house_test))
+sarimax_house_rmse <- sqrt(mean((sarimax_house_forecast$pred - bank_test)^2))
+sarimax_house_rmse
+```
+
+
+## 3. SARIMAX -- bank VS employ
+```{r}
+sarimax_model_employ <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = employ_train), method = "CSS")
+summary(sarimax_model_employ)
+
+sarimax_employ_forecast <- predict(sarimax_model_employ, n.ahead = 12, newxreg = data.frame(X1 = employ_test))
+sarimax_employ_rmse <- sqrt(mean((sarimax_employ_forecast$pred - bank_test)^2))
+sarimax_employ_rmse
+```
+
+
+
+## 4. SARIMAX -- bank ~~ population + house
+```{r}
+sarimax_model_pop_house <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = population_train, X2 = house_train), method = "CSS")
+summary(sarimax_model_pop_house)
+
+sarimax_pop_house_forecast <- predict(sarimax_model_pop_house, n.ahead = 12, newxreg = data.frame(X1 = population_test, X2 = house_test))
+sarimax_pop_house_rmse <- sqrt(mean((sarimax_pop_house_forecast$pred - bank_test)^2))
+sarimax_pop_house_rmse
+```
+
+
+## 5. SARIMAX -- bank ~~ population + employ
+```{r}
+sarimax_model_pop_employ <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = population_train, X2 = employ_train), method = "CSS")
+summary(sarimax_model_pop_employ)
+
+sarimax_pop_employ_forecast <- predict(sarimax_model_pop_employ, n.ahead = 12, newxreg = data.frame(X1 = population_test, X2 = employ_test))
+sarimax_pop_employ_rmse <- sqrt(mean((sarimax_pop_employ_forecast$pred - bank_test)^2))
+sarimax_pop_employ_rmse
+```
+
+
+## 6. SARIMAX -- bank ~~ house + employ
+```{r}
+sarimax_model_house_employ <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = house_train, X2 = employ_train), method = "CSS")
+summary(sarimax_model_house_employ)
+
+sarimax_house_employ_forecast <- predict(sarimax_model_house_employ, n.ahead = 12, newxreg = data.frame(X1 = house_test, X2 = employ_test))
+sarimax_house_employ_rmse <- sqrt(mean((sarimax_house_employ_forecast$pred - bank_test)^2))
+sarimax_house_employ_rmse
+
+```
+
+
+## 7. SARIMAX -- bank ~~ population + house + employ 
+
+
+```{r}
+sarimax_model_all <- Arima(bank_train, order = c(3,1,3), seasonal = list(order = c(1, 1, 1), period=12), xreg = data.frame(X1 = population_train, X2 = house_train, X3 = employ_train))#, method = "CSS")
+summary(sarimax_model_all)
+
+sarimax_all_forecast <- predict(sarimax_model_all, n.ahead = 12, newxreg = data.frame(X1 = population_test, X2 = house_test, X3 = employ_test))
+sarimax_all_rmse <- sqrt(mean((sarimax_all_forecast$pred - bank_test)^2))
+sarimax_all_rmse
+
+# sarimax_all_forecast$pred
+```
+
+## SARIMAX rmse
+```{r}
+sarimax_rmse <- data.frame(feature = c("population", "house", "employ", "population + house",
+                                       "population + employ", "house + employ", 
+                                       "population + house + employ"),
+                           rmse = c(0.1624896, 0.148063, 0.1425959, 0.179215, 
+                                    0.1441662, 0.1457388, 0.1420071),
+                           loglikelihood = c(102.79, 124.81, 122.92, 118.74, 
+                                             133.08, 127.65, 143.69)) 
+(sarimax_rmse[order(sarimax_rmse$rmse),])
+```
+
+
+# residual assumption satisfied
+```{r}
+tsdiag(sarimax_model_all) 
+```
+
+
+
+
+```{r}
+VARselect(y = data.frame(bank_train, population_train, house_train, employ_train), season=12, lag.max = 11) # output 3
+```
+
+## VAR all p=3
+```{r}
+var_model_3 <- VAR(y = data.frame(bank_train, population_train, house_train, employ_train), p = 11)
+var_forecast_3 <- predict(var_model_3, n.ahead = 12, ci = 0.95)
+var_rmse_3 <- sqrt(mean((var_forecast_3$fcst$bank_train[,1] - bank_test)^2))
+var_rmse_3
+```
+
+## VAR all p=2
+```{r}
+var_model_2 <- VAR(y = data.frame(bank_train, population_train, house_train, employ_train), p = 2)
+var_forecast_2 <- predict(var_model_2, n.ahead = 12, ci = 0.95)
+var_rmse_2 <- sqrt(mean((var_forecast_2$fcst$bank_train[,1] - bank_test)^2))
+var_rmse_2
+```
+
+## VAR all p=1
+```{r}
+var_model_1 <- VAR(y = data.frame(bank_train, population_train, house_train, employ_train), p = 1)
+var_forecast_1 <- predict(var_model_1, n.ahead = 12, ci = 0.95)
+var_rmse_1 <- sqrt(mean((var_forecast_1$fcst$bank_train[,1] - bank_test)^2))
+var_rmse_1
+```
+
+
+
+
+
+#### Final predict
+
+```{r}
+final_test <- rbind(test[c(1,2,3,5)], test_data)
+
+testdata <- data.frame(X1 = ts(final_test$Population, start = c(2014,1), frequency = 12),
+                       X2 = ts(final_test$House_Price_Index, start = c(2014,1), frequency = 12), 
+                       X3 = ts(final_test$Unemployment_Rate, start = c(2014,1), frequency = 12))
+
+final_model <- Arima(bank_train, order = c(3,1,3), 
+                     seasonal = list(order = c(1, 1, 1), period=12),
+                     xreg = data.frame(X1 = population_train, X2 = house_train, 
+                                       X3 = employ_train),
+                     method = "CSS")
+
+final_forecast <- predict(final_model, n.ahead =48, newxreg = testdata, level = 0.95)
+final_forecast$pred
+ts(final_forecast$pred[13:48], start=c(2015,1), frequency=12)
+final_up <- final_forecast$pred + 1.96 * final_forecast$se
+final_down <- final_forecast$pred - 1.96 * final_forecast$se
+
+par(mfrow=c(1,1))
+plot(ts(train_data$Bankruptcy_Rate, start = c(1987,1), frequency=12), 
+     main = "Monthly BankruptcyRate Prediction, 2015-2017", ylab = "Bankruptcy_Rate", 
+     xlab = "Month", xlim=c(1987, 2017), ylim=c(0,6), xaxt = "n", lwd = 1)
+lines(final_forecast$pred, col="#005caf")
+lines(ts(final_up[13:48], start=c(2015,1), frequency=12), col="#7ba23f")
+lines(ts(final_down[13:48], start=c(2015,1), frequency=12), col="#7ba23f")
+axis(side = 1, at = 1987:2017, labels = 1987:2017)
+lines(ts(train_data$Bankruptcy_Rate, start = c(1987,1), frequency=12
+         )-final_model$residuals, col = "#fedfe1", lwd = 1.5)
+abline(v = 2015, lwd = 2, lty = 2)
+legend("topleft", legend = c("observed value", "fitted value", "predicted value", "95% prediction interval"), lty = 1, col = c("black" , "#fedfe1","#005caf", "#7ba23f"), cex = 0.8)
+```
+
+
+
